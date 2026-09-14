@@ -5,7 +5,9 @@
 
 ---
 
-![ATHLETIX Banner](C:\Users\Dell\.gemini\antigravity-ide\brain\47fd03c1-bfce-4a88-9ee4-1413c0740053\athletix_banner_1787695185782.jpg)
+<div align="center">
+  <h2>AI-Driven Sports Talent Identification & Assessment System</h2>
+</div>
 
 ---
 

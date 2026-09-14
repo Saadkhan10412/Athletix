@@ -1,12 +1,11 @@
 /**
- * ATHLETIX — Verification Hook
- * hooks/useVerification.ts
+ * ATHLETIX — Verification React Hook
+ * mobile-app/hooks/useVerification.ts
  *
- * Responsibilities:
- * - Athlete ke completed videos load karna
- * - Athlete ki verification request history load karna
- * - New verification request submit karna
- * - Pending/approved/rejected status refresh karna
+ * Coordinates athlete performance verification requests:
+ * - Queries athlete's completed video assessments.
+ * - Loads submission history and current badge status (pending, approved, rejected).
+ * - Packages supporting proof documents and submits claims through the backend API.
  */
 
 import {
@@ -71,40 +70,32 @@ function getUserError(
 
 export function useVerification(initialVideoId?: string | null): UseVerificationResult {
   const [videos, setVideos] = useState<VideoRecord[]>([]);
-  const [requests, setRequests] =
-    useState<VerificationRequestItem[]>([]);
+  const [requests, setRequests] = useState<VerificationRequestItem[]>([]);
 
-  const [selectedVideoId, setSelectedVideoId] =
-    useState<string | null>(initialVideoId ?? null);
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(initialVideoId ?? null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ✅ Only successfully analysed videos can be verified.
+  // Filter for completed AI assessment videos eligible for verification
   const completedVideos = useMemo(
     () => videos.filter((video) => video.status === 'completed'),
     [videos],
   );
 
   const pendingCount = useMemo(
-    () => requests.filter(
-      (request) => request.status === 'pending',
-    ).length,
+    () => requests.filter((request) => request.status === 'pending').length,
     [requests],
   );
 
   const approvedCount = useMemo(
-    () => requests.filter(
-      (request) => request.status === 'approved',
-    ).length,
+    () => requests.filter((request) => request.status === 'approved').length,
     [requests],
   );
 
   const rejectedCount = useMemo(
-    () => requests.filter(
-      (request) => request.status === 'rejected',
-    ).length,
+    () => requests.filter((request) => request.status === 'rejected').length,
     [requests],
   );
 
@@ -113,7 +104,7 @@ export function useVerification(initialVideoId?: string | null): UseVerification
     setError(null);
 
     try {
-      // ✅ Videos and requests parallel mein load honge.
+      // Parallel retrieval of video history and verification requests
       const [videoRows, requestRows] = await Promise.all([
         getMyVideos(),
         getMyVerificationRequests(),
@@ -122,21 +113,13 @@ export function useVerification(initialVideoId?: string | null): UseVerification
       setVideos(videoRows);
       setRequests(requestRows);
 
-      const completed = videoRows.filter(
-        (video) => video.status === 'completed',
-      );
+      const completed = videoRows.filter((video) => video.status === 'completed');
 
       setSelectedVideoId((currentVideoId) => {
         const targetId = currentVideoId || initialVideoId;
-        // Existing or initial selection valid hai toh preserve karo.
-        if (
-          targetId &&
-          completed.some((video) => video.id === targetId)
-        ) {
+        if (targetId && completed.some((video) => video.id === targetId)) {
           return targetId;
         }
-
-        // Otherwise first completed video select karo.
         return completed[0]?.id ?? null;
       });
     } catch (caughtError: unknown) {
@@ -151,7 +134,6 @@ export function useVerification(initialVideoId?: string | null): UseVerification
     }
   }, [initialVideoId]);
 
-
   const submitRequest = useCallback(
     async (
       details: string,
@@ -160,8 +142,7 @@ export function useVerification(initialVideoId?: string | null): UseVerification
       setError(null);
 
       if (!selectedVideoId) {
-        const message =
-          'Please select a completed performance video.';
+        const message = 'Please select a completed performance video.';
         setError(message);
         throw new Error(message);
       }
@@ -169,29 +150,25 @@ export function useVerification(initialVideoId?: string | null): UseVerification
       const normalizedDetails = details.trim();
 
       if (normalizedDetails.length < 1) {
-        const message =
-          'Please enter verification details or reason for review.';
+        const message = 'Please enter verification details or reason for review.';
         setError(message);
         throw new Error(message);
       }
 
       if (normalizedDetails.length > 2000) {
-        const message =
-          'Verification details cannot exceed 2000 characters.';
+        const message = 'Verification details cannot exceed 2000 characters.';
         setError(message);
         throw new Error(message);
       }
 
       if (documents.length < 1) {
-        const message =
-          'Please attach at least one supporting document.';
+        const message = 'Please attach at least one supporting document.';
         setError(message);
         throw new Error(message);
       }
 
       if (documents.length > 5) {
-        const message =
-          'You can attach a maximum of 5 documents.';
+        const message = 'You can attach a maximum of 5 documents.';
         setError(message);
         throw new Error(message);
       }
@@ -201,8 +178,7 @@ export function useVerification(initialVideoId?: string | null): UseVerification
       );
 
       if (!selectedVideo) {
-        const message =
-          'Selected video is not completed or no longer available.';
+        const message = 'Selected video is not completed or no longer available.';
         setError(message);
         throw new Error(message);
       }
@@ -210,15 +186,12 @@ export function useVerification(initialVideoId?: string | null): UseVerification
       setIsSubmitting(true);
 
       try {
-        // ✅ Mobile app directly privileged Supabase operation nahi karegi.
-        // Request authenticated FastAPI backend ke through jayegi.
         const createdRequest = await submitVerificationRequest(
           selectedVideoId,
           normalizedDetails,
           documents,
         );
 
-        // Latest request ko top par immediately show karo.
         setRequests((currentRequests) => [
           createdRequest,
           ...currentRequests.filter(
@@ -250,18 +223,14 @@ export function useVerification(initialVideoId?: string | null): UseVerification
     videos,
     completedVideos,
     requests,
-
     selectedVideoId,
     setSelectedVideoId,
-
     isLoading,
     isSubmitting,
     error,
-
     pendingCount,
     approvedCount,
     rejectedCount,
-
     refresh,
     submitRequest,
   };

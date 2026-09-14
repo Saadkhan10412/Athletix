@@ -1,12 +1,8 @@
 /**
- * ATHLETIX — useAuth Hook
- * hooks/useAuth.ts
+ * ATHLETIX — Authentication React Hook
+ * mobile-app/hooks/useAuth.ts
  *
- * ✅ CHANGED:
- * Local useState remove karke Zustand global auth store use kiya gaya hai.
- *
- * Ab logout/login/session change application ke sabhi screens me
- * immediately synchronize hoga.
+ * Custom React hook exposing the global authentication context and helper actions to UI screens.
  */
 
 import { useEffect } from 'react';
@@ -19,19 +15,14 @@ export interface AuthState {
   role: 'athlete' | 'official' | 'admin' | null;
   isLoading: boolean;
 
-  /**
-   * Stored session aur global auth state clear karta hai.
-   */
+  /** Purges active user session and state across the application. */
   logout: () => Promise<void>;
 
-  /**
-   * Successful signup/login ke baad global state refresh karta hai.
-   */
+  /** Revalidates current credentials and updates local user profile. */
   refresh: () => Promise<void>;
 }
 
 export function useAuth(): AuthState {
-  // ✅ CHANGED: Shared Zustand state/actions
   const user = useAuthStore((state) => state.user);
   const isLoading = useAuthStore((state) => state.isLoading);
   const initialize = useAuthStore((state) => state.initialize);

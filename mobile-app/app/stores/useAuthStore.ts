@@ -1,9 +1,8 @@
 /**
  * ATHLETIX — Global Authentication Store
- * stores/useAuthStore.ts
+ * mobile-app/app/stores/useAuthStore.ts
  *
- * ✅ NEW FILE:
- * Application ke sabhi screens ke liye single shared auth state.
+ * Singleton state container providing synchronized authentication state across all application screens.
  */
 
 import { create } from 'zustand';
@@ -14,31 +13,22 @@ import {
   type AuthUser,
 } from '../../services/authService';
 
-
 interface AuthStore {
   user: AuthUser | null;
   isLoading: boolean;
   isInitialized: boolean;
 
-  /**
-   * App start par stored session ko ek baar restore karta hai.
-   */
+  /** Restores persisted user session on application mount. */
   initialize: () => Promise<void>;
 
-  /**
-   * Successful login/signup ke baad stored user dobara load karta hai.
-   */
+  /** Refreshes current session data following login or signup events. */
   refresh: () => Promise<void>;
 
-  /**
-   * Backend logout call, local storage clear aur global user reset karta hai.
-   */
+  /** Dispatches backend logout, flushes local storage, and resets active user. */
   logout: () => Promise<void>;
 }
 
-// ✅ NEW:
-// Multiple components ek saath initialize call karein,
-// tab bhi session restoration sirf ek baar execute hogi.
+// Ensures concurrent initialization calls are deduplicated into a single promise
 let initializationPromise: Promise<void> | null = null;
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
@@ -47,12 +37,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   isInitialized: false,
 
   initialize: async (): Promise<void> => {
-    // ✅ NEW: Already initialized ho to dobara storage read nahi karna.
     if (get().isInitialized) {
       return;
     }
 
-    // ✅ NEW: Existing initialization ko reuse karo.
     if (initializationPromise) {
       return initializationPromise;
     }
@@ -107,10 +95,6 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       await logoutService();
     } finally {
-      /**
-       * ✅ IMPORTANT:
-       * Backend logout fail ho tab bhi frontend user state clear hogi.
-       */
       set({
         user: null,
         isLoading: false,

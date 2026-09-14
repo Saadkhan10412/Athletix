@@ -1,9 +1,15 @@
 /**
  * ATHLETIX — Notification Service
- * services/notificationService.ts
+ * mobile-app/services/notificationService.ts
  *
- * Handles notification list, unread count, mark-as-read,
- * mark-all-read and development test notifications.
+ * Manages user alert dispatches, unread badge counts, read acknowledgements,
+ * and remote push token device registrations.
+ *
+ * Core Capabilities:
+ * - Notification Feed: Retrieves paginated user activity alerts (assessment completions,
+ *   verification badges, scout shortlists).
+ * - Read Tracking: Marks individual or all notifications as read.
+ * - Push Notification Tokens: Registers and unregisters Expo push device tokens for mobile alerts.
  */
 
 import api from './api';
@@ -54,7 +60,7 @@ const VALID_NOTIFICATION_TYPES: ReadonlySet<NotificationType> =
   ]);
 
 /**
- * Backend notification object ko safely validate aur normalize karta hai.
+ * Validates and normalizes raw notification response payloads from the backend.
  */
 function normalizeNotification(
   raw: unknown,
@@ -100,7 +106,7 @@ function normalizeNotification(
 }
 
 /**
- * Authenticated user's notification list aur total unread count fetch karta hai.
+ * Fetches the authenticated user's recent notifications and total unread count.
  */
 export async function getNotifications(
   limit = 50,
@@ -127,23 +133,16 @@ export async function getNotifications(
       ? rawNotifications
           .map(normalizeNotification)
           .filter(
-            (
-              item,
-            ): item is NotificationItem =>
-              item !== null,
+            (item): item is NotificationItem => item !== null,
           )
       : [];
 
-  const parsedUnreadCount = Number(
-    data?.unread_count,
-  );
+  const parsedUnreadCount = Number(data?.unread_count);
 
   const unreadCount =
     Number.isFinite(parsedUnreadCount)
       ? Math.max(0, parsedUnreadCount)
-      : notifications.filter(
-          (item) => !item.is_read,
-        ).length;
+      : notifications.filter((item) => !item.is_read).length;
 
   return {
     unread_count: unreadCount,
@@ -152,7 +151,7 @@ export async function getNotifications(
 }
 
 /**
- * One owned notification ko read mark karta hai.
+ * Marks an individual notification as read.
  */
 export async function markNotificationAsRead(
   notificationId: string,
@@ -160,15 +159,11 @@ export async function markNotificationAsRead(
   const cleanedId = notificationId.trim();
 
   if (!cleanedId) {
-    throw new Error(
-      'Notification ID is required.',
-    );
+    throw new Error('Notification ID is required.');
   }
 
   const response = await api.put(
-    `/notifications/${encodeURIComponent(
-      cleanedId,
-    )}/read`,
+    `/notifications/${encodeURIComponent(cleanedId)}/read`,
   );
 
   const data = response.data?.data;
@@ -184,24 +179,20 @@ export async function markNotificationAsRead(
         ? data.notification_id
         : cleanedId,
 
-    already_read:
-      data?.already_read === true,
+    already_read: data?.already_read === true,
   };
 }
 
 /**
- * Current user's all unread notifications ko read mark karta hai.
+ * Marks all pending unread notifications for the user as read.
  */
-export async function markAllNotificationsAsRead():
-Promise<MarkAllReadResult> {
+export async function markAllNotificationsAsRead(): Promise<MarkAllReadResult> {
   const response = await api.put(
     '/notifications/read-all',
   );
 
   const data = response.data?.data;
-  const parsedUpdatedCount = Number(
-    data?.updated_count,
-  );
+  const parsedUpdatedCount = Number(data?.updated_count);
 
   return {
     message:
@@ -217,7 +208,7 @@ Promise<MarkAllReadResult> {
 }
 
 /**
- * Development environment me test notification generate karta hai.
+ * Generates a test notification for verification and development environments.
  */
 export async function sendTestNotification(
   message = 'Your AI performance report is ready!',
@@ -226,9 +217,7 @@ export async function sendTestNotification(
   const cleanedMessage = message.trim();
 
   if (!cleanedMessage) {
-    throw new Error(
-      'Notification message cannot be blank.',
-    );
+    throw new Error('Notification message cannot be blank.');
   }
 
   const response = await api.post(
@@ -239,23 +228,18 @@ export async function sendTestNotification(
     },
   );
 
-  const rawNotification =
-    response.data?.data?.notification;
-
-  const notification =
-    normalizeNotification(rawNotification);
+  const rawNotification = response.data?.data?.notification;
+  const notification = normalizeNotification(rawNotification);
 
   if (!notification) {
-    throw new Error(
-      'Backend returned an invalid notification.',
-    );
+    throw new Error('Backend returned an invalid notification.');
   }
 
   return notification;
 }
 
 /**
- * Expo push token ko backend pe register karta hai.
+ * Registers an Expo device push token with the backend service.
  */
 export async function registerPushToken(
   token: string,
@@ -273,7 +257,7 @@ export async function registerPushToken(
 }
 
 /**
- * Logout ke time push token backend se remove karta hai.
+ * Unregisters the device push token upon session logout.
  */
 export async function unregisterPushToken(
   token: string,

@@ -1,8 +1,14 @@
 /**
  * ATHLETIX — Video Service
- * services/videoService.ts
+ * mobile-app/services/videoService.ts
  *
- * Web, Android and iOS compatible video upload service.
+ * Cross-platform (Web, iOS, Android) video upload, management, and assessment retrieval service.
+ *
+ * Key Functionalities:
+ * - Binary Blob & Multipart Form Handling: Normalizes local video files across web blobs and native file URIs.
+ * - Upload Progress Tracking: Streams byte upload percentage events back to UI progress indicators.
+ * - Video Lifecycle Management: Fetches athlete submission history, detailed AI assessment scorecards,
+ *   retries failed analysis jobs, and deletes attempts.
  */
 
 import { Platform } from 'react-native';
@@ -50,7 +56,7 @@ export interface UploadVideoPayload {
 }
 
 /**
- * Expo Web ke blob URL ko actual browser Blob mein convert karta hai.
+ * Converts a web blob URI into a standard browser Blob instance for multipart upload.
  */
 async function createWebVideoBlob(
   uri: string,
@@ -80,7 +86,10 @@ async function createWebVideoBlob(
 }
 
 /**
- * Uploads a video for AI analysis.
+ * Submits an exercise video attempt to the FastAPI backend for storage and MediaPipe AI evaluation.
+ *
+ * @param payload - Video file metadata, sport category, and exercise type.
+ * @param onProgress - Optional callback receiving upload progress percentages (0 - 100).
  */
 export async function uploadVideoAttempt(
   payload: UploadVideoPayload,
@@ -102,16 +111,12 @@ export async function uploadVideoAttempt(
     throw new Error('Please select an exercise.');
   }
 
-  const fileName =
-    payload.name?.trim() || 'attempt.mp4';
-
-  const mimeType =
-    payload.type?.trim() || 'video/mp4';
-
+  const fileName = payload.name?.trim() || 'attempt.mp4';
+  const mimeType = payload.type?.trim() || 'video/mp4';
   const formData = new FormData();
 
   if (Platform.OS === 'web') {
-    // ✅ CHANGED: Browser requires an actual Blob.
+    // Web platform requires standard browser Blob object
     const videoBlob = await createWebVideoBlob(
       payload.uri,
       mimeType,
@@ -123,7 +128,7 @@ export async function uploadVideoAttempt(
       fileName,
     );
   } else {
-    // ✅ Android/iOS React Native format.
+    // React Native iOS/Android native file dictionary structure
     formData.append(
       'file',
       {
@@ -155,22 +160,18 @@ export async function uploadVideoAttempt(
   }
 
   const config: AxiosRequestConfig = {
-    // ✅ Video/Cloudinary upload ke liye 3 minutes.
+    // 3-minute timeout to accommodate large high-definition video uploads
     timeout: 180_000,
 
     onUploadProgress: (progressEvent) => {
-      if (
-        !onProgress ||
-        !progressEvent.total
-      ) {
+      if (!onProgress || !progressEvent.total) {
         return;
       }
 
       const percent = Math.min(
         100,
         Math.round(
-          (progressEvent.loaded * 100) /
-          progressEvent.total,
+          (progressEvent.loaded * 100) / progressEvent.total,
         ),
       );
 
@@ -179,16 +180,11 @@ export async function uploadVideoAttempt(
   };
 
   if (Platform.OS !== 'web') {
-    // ✅ Native par multipart header required.
     config.headers = {
       'Content-Type': 'multipart/form-data',
     };
   }
 
-  /*
-   * ✅ Web par Content-Type manually set nahi karna.
-   * Browser automatically multipart boundary add karega.
-   */
   const response = await api.post(
     '/videos/upload',
     formData,
@@ -198,9 +194,7 @@ export async function uploadVideoAttempt(
   const data = response.data?.data;
 
   if (!data?.id) {
-    throw new Error(
-      'Backend returned an invalid video upload response.',
-    );
+    throw new Error('Backend returned an invalid video upload response.');
   }
 
   return {
@@ -216,9 +210,10 @@ export async function uploadVideoAttempt(
   };
 }
 
-/** Lists authenticated athlete videos. */
-export async function getMyVideos():
-  Promise<VideoRecord[]> {
+/**
+ * Retrieves all assessment video submissions uploaded by the authenticated athlete.
+ */
+export async function getMyVideos(): Promise<VideoRecord[]> {
   const response = await api.get('/videos');
 
   return Array.isArray(response.data?.data)
@@ -226,25 +221,22 @@ export async function getMyVideos():
     : [];
 }
 
-/** Gets one video with linked assessment. */
-export async function getVideoDetail(
-  videoId: string,
-): Promise<VideoRecord> {
+/**
+ * Fetches detailed assessment information for a specific video submission.
+ */
+export async function getVideoDetail(videoId: string): Promise<VideoRecord> {
   if (!videoId.trim()) {
     throw new Error('Video ID is required.');
   }
 
-  const response = await api.get(
-    `/videos/${videoId}`,
-  );
-
+  const response = await api.get(`/videos/${videoId}`);
   return response.data.data;
 }
 
-/** Retries AI analysis. */
-export async function retryVideoAnalysis(
-  videoId: string,
-): Promise<{
+/**
+ * Triggers re-analysis of a video attempt if initial AI processing encountered errors.
+ */
+export async function retryVideoAnalysis(videoId: string): Promise<{
   message: string;
   video_id: string;
 }> {
@@ -252,17 +244,14 @@ export async function retryVideoAnalysis(
     throw new Error('Video ID is required.');
   }
 
-  const response = await api.post(
-    `/videos/${videoId}/retry`,
-  );
-
+  const response = await api.post(`/videos/${videoId}/retry`);
   return response.data.data;
 }
 
-/** Deletes video and linked assessment. */
-export async function deleteVideoAttempt(
-  videoId: string,
-): Promise<void> {
+/**
+ * Permanently deletes a video submission along with its associated AI assessment data.
+ */
+export async function deleteVideoAttempt(videoId: string): Promise<void> {
   if (!videoId.trim()) {
     throw new Error('Video ID is required.');
   }

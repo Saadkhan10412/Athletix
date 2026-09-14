@@ -1,11 +1,16 @@
 /**
- * ATHLETIX — API Service (Axios Instance)
- * services/api.ts
+ * ATHLETIX — API HTTP Client (Axios Instance)
+ * mobile-app/services/api.ts
  *
- * Single Axios instance used by all service files.
- * - Stored JWT automatically Bearer token ke roop me inject hota hai.
- * - JSON aur FormData/video upload dono support karta hai.
- * - Backend errors ko user-friendly messages me normalize karta hai.
+ * This module exports a configured Axios instance used by all frontend services
+ * to communicate with the FastAPI backend.
+ *
+ * Key Functionalities:
+ * - Dynamic Base URL resolution (prioritizing EXPO_PUBLIC_API_BASE_URL).
+ * - Automatic Request Interception: Injects stored JWT Bearer token into Authorization headers.
+ * - Response Interception & Error Normalization: Converts varied HTTP errors (network, timeout,
+ *   401 Unauthorized, 403 Forbidden, 500 Internal Server Error) into standardized, user-friendly messages.
+ * - Automatic Session Cleanup: Flushes local authentication credentials when receiving 401s on protected endpoints.
  */
 
 import axios, {
@@ -14,11 +19,19 @@ import axios, {
 } from 'axios';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from './supabase';
 
-// ─── Configuration ────────────────────────────────────────────────────────────
+// ─── Configuration & URL Resolution ──────────────────────────────────────────
 
-const PRODUCTION_API_URL = 'https://athletix-backend-production-ce03.up.railway.app/api/v1';
+// Fallback development API URL if not explicitly defined in environment
+const DEFAULT_API_URL = 'http://localhost:8000/api/v1';
 
+/**
+ * Resolves the active backend API base URL.
+ * 1. Checks EXPO_PUBLIC_API_BASE_URL environment variable.
+ * 2. If running in web mode on localhost, routes to standard local backend port 8000.
+ * 3. Falls back to default backend URL.
+ */
 function resolveBaseUrl(): string {
   const configured = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
   if (configured) {
@@ -32,19 +45,19 @@ function resolveBaseUrl(): string {
     }
   }
 
-  return PRODUCTION_API_URL;
+  return DEFAULT_API_URL;
 }
 
 const BASE_URL = resolveBaseUrl();
 
-
-// AsyncStorage key authService.ts wali key se exactly match honi chahiye.
+// Storage key used across the application for persisting authentication tokens
 const TOKEN_KEY = 'athletix_access_token';
 
-// ─── Error response types ─────────────────────────────────────────────────────
+// ─── Error Response Types ────────────────────────────────────────────────────
 
-// ✅ CHANGED:
-// AxiosError<any> ke badle structured error type.
+/**
+ * Standard error response structure returned by the FastAPI backend.
+ */
 interface BackendErrorPayload {
   error?: {
     code?: string;
@@ -64,24 +77,21 @@ interface BackendErrorPayload {
   message?: string;
 }
 
-// ─── Axios instance ───────────────────────────────────────────────────────────
+// ─── Axios Instance ──────────────────────────────────────────────────────────
 
 const api: AxiosInstance = axios.create({
   baseURL: BASE_URL,
-
-  // ✅ CHANGED:
-  // Video upload aur AI processing requests ke liye 30 seconds kam ho sakte hain.
+  // 120-second timeout allows sufficient time for video uploads and AI inference processing
   timeout: 120_000,
 });
 
-import { supabase } from './supabase';
-
-// ─── Request interceptor: inject stored JWT ───────────────────────────────────
+// ─── Request Interceptor: Inject JWT Bearer Token ─────────────────────────────
 
 api.interceptors.request.use(
   async (config) => {
     let token = await AsyncStorage.getItem(TOKEN_KEY);
 
+    // If local token not found, check active Supabase Auth session as fallback
     if (!token) {
       try {
         const { data } = await supabase.auth.getSession();
@@ -90,7 +100,7 @@ api.interceptors.request.use(
           await AsyncStorage.setItem(TOKEN_KEY, token);
         }
       } catch {
-        // fallback to stored token
+        // Fallback silently if session fetch fails
       }
     }
 
@@ -100,11 +110,10 @@ api.interceptors.request.use(
 
     return config;
   },
-
   (error: unknown) => Promise.reject(error)
 );
 
-// ─── Response interceptor: normalize errors ───────────────────────────────────
+// ─── Response Interceptor: Normalize Errors ──────────────────────────────────
 
 api.interceptors.response.use(
   (response) => response,
@@ -113,7 +122,7 @@ api.interceptors.response.use(
     const serverData = error.response?.data;
     const detail = serverData?.detail;
 
-    // Backend ke supported error response formats.
+    // Extract message from standard backend payload patterns
     const serverMessage =
       serverData?.error?.message ??
       (typeof detail === 'object'
@@ -124,8 +133,6 @@ api.interceptors.response.use(
         : undefined) ??
       serverData?.message;
 
-    // ✅ CHANGED:
-    // Timeout, network failure aur backend messages alag handle honge.
     let userMessage: string;
 
     if (serverMessage) {
@@ -134,22 +141,18 @@ api.interceptors.response.use(
       error.code === 'ECONNABORTED' ||
       error.code === 'ETIMEDOUT'
     ) {
-      userMessage =
-        'Request timed out. Please check your connection and try again.';
+      userMessage = 'Request timed out. Please check your connection and try again.';
     } else if (
       error.code === 'ERR_NETWORK' ||
       !error.response
     ) {
-      userMessage =
-        'Unable to connect to the server. Check that the backend is running and the API URL is correct.';
+      userMessage = 'Unable to connect to the server. Please verify backend service availability.';
     } else if (error.response.status >= 500) {
-      userMessage =
-        'Server error occurred. Please try again after some time.';
+      userMessage = 'Server error occurred. Please try again after some time.';
     } else if (error.response.status === 401) {
-      userMessage =
-        'Invalid credentials or your session has expired.';
+      userMessage = 'Invalid credentials or your session has expired.';
 
-      // Token expiration on protected route -> auto session cleanup
+      // Token expiration on protected route -> automatically trigger store cleanup
       const isAuthRoute = error.config?.url?.includes('/auth/');
       if (!isAuthRoute) {
         void AsyncStorage.multiRemove([TOKEN_KEY, 'athletix_user']).then(() => {
@@ -157,26 +160,19 @@ api.interceptors.response.use(
             const { useAuthStore } = require('../stores/useAuthStore');
             useAuthStore.getState().setUser(null);
           } catch {
-            // Ignore if store not ready
+            // Ignore if store is not yet mounted
           }
         });
       }
     } else if (error.response.status === 403) {
-      userMessage =
-        'You are not authorized to perform this action.';
+      userMessage = 'You are not authorized to perform this action.';
     } else if (error.response.status === 404) {
-      userMessage =
-        'The requested resource was not found.';
+      userMessage = 'The requested resource was not found.';
     } else {
-      userMessage =
-        'Something went wrong. Please try again.';
+      userMessage = 'Something went wrong. Please try again.';
     }
 
-    /**
-     * ✅ CHANGED:
-     * Existing UI error.userMessage access karti hai, isliye custom
-     * property preserve ki gayi hai.
-     */
+    // Attach normalized message to error object for consumption by UI components
     (
       error as AxiosError<BackendErrorPayload> & {
         userMessage: string;

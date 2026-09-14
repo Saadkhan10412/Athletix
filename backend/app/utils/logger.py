@@ -1,16 +1,16 @@
 """
-ATHLETIX — Centralised Logging Setup
-utils/logger.py
+ATHLETIX — Centralized Logging Setup
+backend/app/utils/logger.py
 
-Usage:
+Provides structured standard-library logging across all backend modules and services.
+
+Working & Usage:
+- Standardizes log formatting: timestamps, log severity levels, module namespace, and message content.
+- Dynamically configures log thresholds based on runtime environment (INFO in dev, WARNING in prod).
+- Usage:
     from app.utils.logger import get_logger
     logger = get_logger(__name__)
-    logger.info("Processing video %s", video_id)
-
-Uses Python stdlib logging — no extra packages needed at hackathon scale.
-Log level is INFO in development, WARNING in production.
-
-
+    logger.info("Video %s processed successfully", video_id)
 """
 
 import logging
@@ -22,6 +22,9 @@ _configured = False
 
 
 def configure_logging() -> None:
+    """
+    Configures root logger handlers and timestamp format once per process lifecycle.
+    """
     global _configured
     if _configured:
         return
@@ -43,5 +46,8 @@ def configure_logging() -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
+    """
+    Returns a configured Logger instance for the specified module namespace.
+    """
     configure_logging()
     return logging.getLogger(name)

@@ -16,9 +16,9 @@ supabase==2.7.4
 cloudinary==1.41.0
 
 # ─── AI / Computer Vision ──────────────────────────────────────────────────────
-mediapipe==0.10.14
+mediapipe==0.10.35
 opencv-python-headless==4.10.0.84   # headless: no GUI needed on server
-numpy==1.26.4
+numpy==2.2.0
 
 # ─── Auth / Security ───────────────────────────────────────────────────────────
 python-jose[cryptography]==3.3.0

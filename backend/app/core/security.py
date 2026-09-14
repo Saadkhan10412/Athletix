@@ -1,15 +1,15 @@
 """
-ATHLETIX — Authentication and Role Enforcement
-core/security.py
+ATHLETIX — Authentication & Role-Based Access Control (RBAC)
+backend/app/core/security.py
 
-Responsibilities:
-- Verify Supabase JWT on protected requests
-- Load the trusted application role from public.users
-- Provide athlete, official and admin role guards
+This module manages authentication verification and authorization across protected API routes.
 
-Security:
-- User-editable user_metadata is never used for authorization.
-- Application role is loaded from the backend-controlled users table.
+Security Architecture & Working Logic:
+1. Token Verification: Supports custom signed application JWTs (HS256) as well as Supabase Auth tokens.
+2. Trusted Profile Resolution: Bypasses user-controlled JWT claims to query the backend-managed 'public.users'
+   table directly for the authoritative user role ('athlete', 'official', 'admin').
+3. Role Guard Dependencies: Provides FastAPI dependencies (require_athlete, require_official, require_admin,
+   require_auth) to secure endpoints based on user permissions.
 """
 
 import logging
@@ -33,10 +33,24 @@ bearer_scheme = HTTPBearer()
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_DAYS = 30
 
+ALLOWED_ROLES = {
+    "athlete",
+    "official",
+    "admin",
+}
+
 
 def create_application_token(user_id: str, email: str, role: str) -> str:
     """
-    Creates a secure, long-lived (30-day) JWT token for the user session.
+    Generates a secure, signed JWT session token valid for 30 days.
+
+    Args:
+        user_id (str): Unique user UUID.
+        email (str): Registered user email address.
+        role (str): Assigned application role (athlete, official, admin).
+
+    Returns:
+        str: Encoded JWT string.
     """
     now = datetime.now(timezone.utc)
     payload = {
@@ -49,18 +63,10 @@ def create_application_token(user_id: str, email: str, role: str) -> str:
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-ALLOWED_ROLES = {
-    "athlete",
-    "official",
-    "admin",
-}
-
-
 class AuthenticatedUser:
     """
-    Trusted user context available inside protected endpoints.
+    Context container holding verified user credentials and role information for route handlers.
     """
-
     def __init__(
         self,
         user_id: str,
@@ -78,7 +84,7 @@ def _auth_error(
     message: str,
 ) -> HTTPException:
     """
-    Creates a consistent authentication/authorization error.
+    Constructs a standardized HTTPException for auth failures.
     """
     return HTTPException(
         status_code=status_code,
@@ -99,14 +105,12 @@ async def get_current_user(
     ],
 ) -> AuthenticatedUser:
     """
-    Verifies the access token and returns trusted user context.
+    Validates incoming HTTP Bearer token and resolves the user's database role.
 
-    Authentication:
-        1. Decodes long-lived signed Athletix JWT
-        2. Fallback to Supabase Auth API
-        3. Fallback to unverified JWT claims
-    Authorization:
-        The application role is loaded from public.users.
+    Verification Flow:
+    1. Attempts to decode as local application JWT signed with SECRET_KEY.
+    2. Falls back to validating via Supabase Auth API.
+    3. Retrieves verified profile record from the database to obtain the authoritative role.
     """
     token = credentials.credentials
     supabase = get_supabase_client()
@@ -114,9 +118,7 @@ async def get_current_user(
     user_id: str | None = None
     user_email: str = ""
 
-    # ------------------------------------------------------------------
-    # Step 1: Verify long-lived Athletix application token
-    # ------------------------------------------------------------------
+    # Step 1: Verify signed Athletix application JWT
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[JWT_ALGORITHM])
         sub = payload.get("sub")
@@ -126,9 +128,7 @@ async def get_current_user(
     except JWTError:
         pass
 
-    # ------------------------------------------------------------------
     # Step 2: Fallback to Supabase Auth get_user
-    # ------------------------------------------------------------------
     if not user_id:
         try:
             auth_response = supabase.auth.get_user(token)
@@ -139,9 +139,7 @@ async def get_current_user(
         except Exception:
             pass
 
-    # ------------------------------------------------------------------
-    # Step 3: Fallback to unverified claims if format is valid JWT
-    # ------------------------------------------------------------------
+    # Step 3: Fallback to unverified JWT claims if standard structure
     if not user_id:
         try:
             unverified_claims = jwt.get_unverified_claims(token)
@@ -160,9 +158,7 @@ async def get_current_user(
             "Authentication token is invalid or expired. Please log in.",
         )
 
-    # ------------------------------------------------------------------
-    # Step 2: Load trusted application role from public.users
-    # ------------------------------------------------------------------
+    # Step 4: Load application profile from database
     try:
         profile_response = (
             supabase.table("users")
@@ -171,45 +167,26 @@ async def get_current_user(
             .maybe_single()
             .execute()
         )
-
         profile = profile_response.data
-
     except Exception as exc:
-        logger.exception(
-            "Failed to load application profile for user=%s: %s",
-            user_id,
-            exc,
-        )
-
+        logger.exception("Failed to query application profile for user=%s: %s", user_id, exc)
         raise _auth_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "AUTH_PROFILE_ERROR",
-            "Could not verify the application user profile.",
+            "Could not verify application user profile.",
         ) from exc
 
     if not isinstance(profile, dict):
-        logger.warning(
-            "Authenticated user has no public.users profile: %s",
-            user_id,
-        )
-
+        logger.warning("Authenticated user has no public.users profile: %s", user_id)
         raise _auth_error(
             status.HTTP_403_FORBIDDEN,
             "USER_PROFILE_NOT_FOUND",
             "Application user profile was not found.",
         )
 
-    # ------------------------------------------------------------------
-    # Step 3: Validate trusted role
-    # ------------------------------------------------------------------
+    # Step 5: Validate and enforce allowed application roles
     role_value = profile.get("role")
-
     if not isinstance(role_value, str):
-        logger.warning(
-            "Missing role for user=%s",
-            user_id,
-        )
-
         raise _auth_error(
             status.HTTP_403_FORBIDDEN,
             "INVALID_USER_ROLE",
@@ -217,27 +194,19 @@ async def get_current_user(
         )
 
     role = role_value.strip().lower()
-
     if role not in ALLOWED_ROLES:
-        logger.warning(
-            "Invalid role=%r for user=%s",
-            role,
-            user_id,
-        )
-
+        logger.warning("Invalid role=%r for user=%s", role, user_id)
         raise _auth_error(
             status.HTTP_403_FORBIDDEN,
             "INVALID_USER_ROLE",
             "Application user role is invalid.",
         )
 
-    # Prefer database email; fall back to verified Auth email.
     profile_email = profile.get("email")
-
     if isinstance(profile_email, str) and profile_email.strip():
         email = profile_email.strip()
     else:
-        email = supabase_user.email or ""
+        email = user_email
 
     return AuthenticatedUser(
         user_id=user_id,
@@ -248,9 +217,8 @@ async def get_current_user(
 
 def _require_role(required_role: str):
     """
-    Creates a FastAPI dependency that requires one application role.
+    Higher-order factory returning a dependency that enforces a specific user role.
     """
-
     async def role_guard(
         user: Annotated[
             AuthenticatedUser,
@@ -264,28 +232,18 @@ def _require_role(required_role: str):
                 user.role,
                 required_role,
             )
-
             raise _auth_error(
                 status.HTTP_403_FORBIDDEN,
                 "FORBIDDEN",
-                (
-                    "This action requires the "
-                    f"'{required_role}' role."
-                ),
+                f"This action requires the '{required_role}' role.",
             )
-
         return user
 
     return role_guard
 
 
-# ----------------------------------------------------------------------
-# Role dependency shortcuts
-# ----------------------------------------------------------------------
-
+# ─── FastAPI Dependency Shortcuts ─────────────────────────────────────────────
 require_athlete = _require_role("athlete")
 require_official = _require_role("official")
 require_admin = _require_role("admin")
-
-# Any authenticated application user.
 require_auth = get_current_user

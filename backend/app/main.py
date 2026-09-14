@@ -1,17 +1,17 @@
 """
 ATHLETIX — FastAPI Backend Entry Point
-main.py
+backend/app/main.py
 
-Responsibilities:
-  - Create the FastAPI app instance
-  - Register all route groups (v1)
-  - Mount global middleware (CORS, auth, exception handler)
-  - Health-check endpoint (used by Phase 0 exit criteria)
+Main application bootstrap and routing registry for the ATHLETIX platform.
 
-Rules (from Rules.md):
-  - No business logic here; only wiring
-  - No AI/CV logic anywhere near this file
-  - All secrets via config.py (never hardcoded)
+Key Architecture Responsibilities:
+- Lifecycle Management: Initializes background processes (including the real-time AI Streamlit gym coach)
+  and handles clean application shutdown.
+- Middleware Configuration: Configures Cross-Origin Resource Sharing (CORS) across development and
+  production environments.
+- Exception Handling: Intercepts HTTP and unhandled internal exceptions to return secure, structured JSON responses.
+- Router Registration: Mounts all modular API route handlers under the '/api/v1' versioned prefix.
+- Health Monitoring: Exposes the '/health' endpoint for container orchestrators and uptime checks.
 """
 
 import logging
@@ -36,7 +36,7 @@ from app.api.v1 import (
     push_tokens,
 )
 
-# ─── Logging setup ────────────────────────────────────────────────────────────
+# ─── Logging Setup ────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -45,10 +45,15 @@ logger = logging.getLogger("athletix")
 
 
 def start_streamlit_coach_background():
+    """
+    Spawns the Streamlit AI Gym Coach background engine on port 8501 if not already running.
+    This enables real-time interactive webcam workout analysis.
+    """
     try:
         import socket, subprocess, sys
         from pathlib import Path
 
+        # Check if port 8501 is already occupied
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
         res = sock.connect_ex(('127.0.0.1', 8501))
@@ -57,13 +62,12 @@ def start_streamlit_coach_background():
             logger.info("AI Gym Coach Engine is already active on port 8501.")
             return
 
-        # Find workspace root directory containing "ai-gym-coach-main - Copy"
+        # Discover workspace root directory containing the Streamlit app
         backend_dir = Path(__file__).resolve().parent.parent
         workspace_dir = backend_dir.parent
         coach_script = workspace_dir / "ai-gym-coach-main - Copy" / "Main App" / "main.py"
 
         if not coach_script.exists():
-            # Fallback check inside backend_dir
             coach_script = backend_dir / "ai-gym-coach-main - Copy" / "Main App" / "main.py"
 
         if coach_script.exists():
@@ -88,26 +92,27 @@ def start_streamlit_coach_background():
             )
             logger.info("AI Gym Coach Engine launched successfully in background!")
         else:
-            logger.warning("Could not find AI Gym Coach script at %s", coach_script)
+            logger.warning("AI Gym Coach script not found at %s", coach_script)
     except Exception as exc:
         logger.error("Could not auto-activate AI Gym Coach Engine: %s", exc)
 
 
-# ─── Lifespan (startup / shutdown hooks) ──────────────────────────────────────
+# ─── Application Lifespan Hooks ───────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("ATHLETIX backend starting up — env: %s", settings.APP_ENV)
+    """
+    FastAPI lifespan context manager handling startup initialization and teardown tasks.
+    """
+    logger.info("ATHLETIX backend starting up — environment: %s", settings.APP_ENV)
     start_streamlit_coach_background()
     yield
     logger.info("ATHLETIX backend shutting down.")
 
 
-# ─── App instance ─────────────────────────────────────────────────────────────
-is_dev_env = settings.APP_ENV.lower() == "development"
-
+# ─── FastAPI Application Instance ─────────────────────────────────────────────
 app = FastAPI(
     title="ATHLETIX API",
-    description="AI-Powered Sports Talent Assessment Platform — SIH 2026",
+    description="AI-Powered Sports Talent Assessment Platform — REST API Backend",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
@@ -115,19 +120,11 @@ app = FastAPI(
 )
 
 
-# ─── CORS ─────────────────────────────────────────────────────────────────────
-# Allow web app (Vercel, localhost) and mobile devices to access API seamlessly
+# ─── CORS Middleware Configuration ────────────────────────────────────────────
+# Allows mobile app, Expo web development server, and authorized web clients to access the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8081",
-        "http://localhost:19006",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://mobile-app-theta-gules.vercel.app",
-        "https://athletix.vercel.app",
-        "https://athletix.app",
-    ],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
@@ -135,9 +132,12 @@ app.add_middleware(
 )
 
 
-# ─── Global exception handlers ────────────────────────────────────────────────
+# ─── Global Exception Handlers ────────────────────────────────────────────────
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
+    """
+    Standardizes HTTPException payloads into a consistent API response schema.
+    """
     if isinstance(exc.detail, dict):
         return JSONResponse(status_code=exc.status_code, content=exc.detail)
     return JSONResponse(
@@ -152,11 +152,13 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
-# Catches any unhandled exception and returns a safe, structured error response.
-# NEVER leaks a raw Python stack trace to the client (Rules.md §9).
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception("Unhandled exception on %s %s", request.method, request.url)
+    """
+    Catches unhandled runtime exceptions and returns a clean, secure error format.
+    Prevents sensitive server traces from leaking to client applications.
+    """
+    logger.exception("Unhandled server exception on %s %s", request.method, request.url)
     return JSONResponse(
         status_code=500,
         content={
@@ -169,7 +171,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ─── Route registration ───────────────────────────────────────────────────────
+# ─── Route Registration ───────────────────────────────────────────────────────
 API_PREFIX = "/api/v1"
 
 app.include_router(auth.router,          prefix=f"{API_PREFIX}/auth",          tags=["Auth"])
@@ -185,8 +187,10 @@ app.include_router(live_coach.router,    prefix=f"{API_PREFIX}/live",          t
 app.include_router(push_tokens.router,   prefix=f"{API_PREFIX}/push-tokens",   tags=["Push Tokens"])
 
 
-# ─── Health check ─────────────────────────────────────────────────────────────
-# Phase 0 exit criteria: GET /health returns 200.
+# ─── Health Check Endpoint ────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health_check():
+    """
+    Liveness and health-check endpoint for container orchestration and uptime monitors.
+    """
     return {"success": True, "data": {"status": "ok", "env": settings.APP_ENV}}

@@ -1,13 +1,14 @@
 """
-ATHLETIX — Scouting, Leaderboard and Verification Schemas
-models/scouting.py
+ATHLETIX — Data Models: Scouting, Leaderboard & Verification Schemas
+backend/app/models/scouting.py
 
-Contains request and response schemas for:
-- Leaderboard
-- Direct official verification
-- Athlete verification request workflow
-- Admin approve/reject workflow
-- Shortlists
+Pydantic schemas governing athletic rankings, scout shortlisting, and verification workflows.
+
+Models Included:
+- LeaderboardEntry: Formatted ranking metrics for athletes across exercises and sports categories.
+- VerifyRequest / VerificationResponseItem: Official direct verification endorsement schemas.
+- VerificationReviewRequest / VerificationRequestItem: Multi-step athlete proof verification and admin approval workflow.
+- ShortlistRequest / ShortlistResponseItem: Scouting bookmarks created by talent scouts and sports officials.
 """
 
 from typing import Literal
@@ -20,11 +21,11 @@ from pydantic import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Leaderboard
-# ---------------------------------------------------------------------------
-
+# ─── Leaderboard Schemas ──────────────────────────────────────────────────────
 class LeaderboardEntry(BaseModel):
+    """
+    Individual ranked entry displayed on the regional and global leaderboards.
+    """
     sport: str
     exercise: str
     athlete_id: str
@@ -37,11 +38,11 @@ class LeaderboardEntry(BaseModel):
     is_verified: bool = False
 
 
-# ---------------------------------------------------------------------------
-# Existing direct official verification
-# ---------------------------------------------------------------------------
-
+# ─── Official Direct Verification Schemas ─────────────────────────────────────
 class VerifyRequest(BaseModel):
+    """
+    Direct verification payload submitted by authorized sports officials.
+    """
     athlete_id: str
     video_id: str
     exercise: str
@@ -57,16 +58,15 @@ class VerifyRequest(BaseModel):
         value: str,
     ) -> str:
         cleaned = value.strip()
-
         if not cleaned:
-            raise ValueError(
-                "Field cannot be blank."
-            )
-
+            raise ValueError("Field cannot be blank.")
         return cleaned
 
 
 class VerificationResponseItem(BaseModel):
+    """
+    Confirmation response for an approved official verification record.
+    """
     id: str
     athlete_id: str
     official_id: str
@@ -75,10 +75,7 @@ class VerificationResponseItem(BaseModel):
     verified_at: str
 
 
-# ---------------------------------------------------------------------------
-# Athlete verification request workflow
-# ---------------------------------------------------------------------------
-
+# ─── Athlete Verification Request Workflow Schemas ────────────────────────────
 VerificationRequestStatus = Literal[
     "pending",
     "approved",
@@ -93,11 +90,9 @@ VerificationReviewStatus = Literal[
 
 class VerificationReviewRequest(BaseModel):
     """
-    Admin payload for approving or rejecting a request.
+    Review action payload used by administrators to approve or reject athlete badge claims.
     """
-
     status: VerificationReviewStatus
-
     review_note: str | None = Field(
         default=None,
         max_length=500,
@@ -111,48 +106,29 @@ class VerificationReviewRequest(BaseModel):
     ) -> str | None:
         if value is None:
             return None
-
         cleaned = value.strip()
-
         return cleaned or None
 
     @model_validator(mode="after")
-    def validate_review_decision(
-        self,
-    ):
-        if (
-            self.status == "rejected"
-            and (
-                self.review_note is None
-                or len(self.review_note) < 3
-            )
-        ):
-            raise ValueError(
-                "A rejection reason of at least "
-                "3 characters is required."
-            )
-
+    def validate_review_decision(self):
+        if self.status == "rejected" and (self.review_note is None or len(self.review_note) < 3):
+            raise ValueError("A rejection reason of at least 3 characters is required.")
         return self
 
 
 class VerificationRequestItem(BaseModel):
     """
-    Verification request returned by backend.
+    Data model representing an athlete's formal verification claim and submitted proofs.
     """
-
     id: str
     athlete_id: str
     video_id: str
     exercise: str
-
     details: str
     document_paths: list[str]
-
     status: VerificationRequestStatus
-
     reviewed_by: str | None = None
     review_note: str | None = None
-
     created_at: str
     updated_at: str
     reviewed_at: str | None = None
@@ -160,21 +136,19 @@ class VerificationRequestItem(BaseModel):
 
 class VerificationDocumentItem(BaseModel):
     """
-    Temporary signed document URL returned to authorized users.
+    Signed, time-limited document download URL for reviewing supporting verification files.
     """
-
     path: str
     signed_url: str
     expires_in: int
 
 
-# ---------------------------------------------------------------------------
-# Shortlist
-# ---------------------------------------------------------------------------
-
+# ─── Talent Scout Shortlist Schemas ───────────────────────────────────────────
 class ShortlistRequest(BaseModel):
+    """
+    Payload for talent scouts bookmarking an athlete for regional/national trials.
+    """
     athlete_id: str
-
     sport: Literal[
         "powerlifting",
         "calisthenics",
@@ -187,16 +161,15 @@ class ShortlistRequest(BaseModel):
         value: str,
     ) -> str:
         cleaned = value.strip()
-
         if not cleaned:
-            raise ValueError(
-                "Athlete ID cannot be blank."
-            )
-
+            raise ValueError("Athlete ID cannot be blank.")
         return cleaned
 
 
 class ShortlistResponseItem(BaseModel):
+    """
+    Shortlisted athlete summary record returned to officials.
+    """
     id: str
     official_id: str
     athlete_id: str

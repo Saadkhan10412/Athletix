@@ -1,14 +1,9 @@
 /**
- * ATHLETIX — useNotifications Hook
- * hooks/useNotifications.ts
+ * ATHLETIX — Notifications React Hook
+ * mobile-app/hooks/useNotifications.ts
  *
- * Handles:
- * - Notification list
- * - Unread count
- * - Auto-refresh polling
- * - Mark one/all as read
- * - Optimistic updates with rollback
- * - User-friendly errors
+ * Custom React hook providing optimistic UI updates, polling, unread count tracking,
+ * and read-status management for user alerts.
  */
 
 import {
@@ -50,28 +45,17 @@ function getErrorMessage(
 }
 
 export function useNotifications() {
-  const [notifications, setNotifications] =
-    useState<NotificationItem[]>([]);
-
-  const [unreadCount, setUnreadCount] =
-    useState(0);
-
-  const [isLoading, setIsLoading] =
-    useState(true);
-
-  const [isRefreshing, setIsRefreshing] =
-    useState(false);
-
-  const [actionLoadingId, setActionLoadingId] =
-    useState<string | null>(null);
-
-  const [error, setError] =
-    useState<string | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const mountedRef = useRef(true);
 
   /**
-   * Latest notifications fetch karta hai.
+   * Fetches latest notifications from the server.
    */
   const load = useCallback(
     async (silent = false): Promise<void> => {
@@ -82,20 +66,14 @@ export function useNotifications() {
       setError(null);
 
       try {
-        const data =
-          await getNotifications();
+        const data = await getNotifications();
 
         if (!mountedRef.current) {
           return;
         }
 
-        setNotifications(
-          data.notifications,
-        );
-
-        setUnreadCount(
-          data.unread_count,
-        );
+        setNotifications(data.notifications);
+        setUnreadCount(data.unread_count);
       } catch (caughtError: unknown) {
         if (!mountedRef.current) {
           return;
@@ -121,19 +99,15 @@ export function useNotifications() {
   );
 
   /**
-   * Initial load and polling every 20 seconds.
+   * Initializes feed and sets up a 20-second polling interval for real-time alerts.
    */
   useEffect(() => {
     mountedRef.current = true;
-
     void load();
 
-    const intervalId = setInterval(
-      () => {
-        void load(true);
-      },
-      20_000,
-    );
+    const intervalId = setInterval(() => {
+      void load(true);
+    }, 20_000);
 
     return () => {
       mountedRef.current = false;
@@ -142,67 +116,42 @@ export function useNotifications() {
   }, [load]);
 
   /**
-   * Pull-to-refresh.
+   * Pull-to-refresh action trigger.
    */
-  const refreshNotifications =
-    useCallback(async (): Promise<void> => {
-      setIsRefreshing(true);
-      await load(true);
-    }, [load]);
+  const refreshNotifications = useCallback(async (): Promise<void> => {
+    setIsRefreshing(true);
+    await load(true);
+  }, [load]);
 
   /**
-   * Marks one unread notification as read.
+   * Optimistically marks an individual notification as read.
    */
   const markRead = useCallback(
-    async (
-      notificationId: string,
-    ): Promise<void> => {
-      const notification =
-        notifications.find(
-          (item) =>
-            item.id === notificationId,
-        );
+    async (notificationId: string): Promise<void> => {
+      const notification = notifications.find(
+        (item) => item.id === notificationId,
+      );
 
-      // Missing/already-read notification par kuch nahi karna.
-      if (
-        !notification ||
-        notification.is_read
-      ) {
+      if (!notification || notification.is_read) {
         return;
       }
 
-      setActionLoadingId(
-        notificationId,
-      );
-
+      setActionLoadingId(notificationId);
       setError(null);
 
-      // Optimistic update.
-      setNotifications(
-        (currentNotifications) =>
-          currentNotifications.map(
-            (item) =>
-              item.id === notificationId
-                ? {
-                  ...item,
-                  is_read: true,
-                }
-                : item,
-          ),
+      // Optimistic update
+      setNotifications((currentNotifications) =>
+        currentNotifications.map((item) =>
+          item.id === notificationId
+            ? { ...item, is_read: true }
+            : item,
+        ),
       );
 
-      setUnreadCount(
-        (currentCount) =>
-          Math.max(
-            0,
-            currentCount - 1,
-          ),
-      );
+      setUnreadCount((currentCount) => Math.max(0, currentCount - 1));
 
       try {
-        await markNotificationAsRead(
-          notificationId,
-        );
+        await markNotificationAsRead(notificationId);
       } catch (caughtError: unknown) {
         setError(
           getErrorMessage(
@@ -210,8 +159,7 @@ export function useNotifications() {
             'Could not mark notification as read.',
           ),
         );
-
-        // Server state fetch karke optimistic update rollback.
+        // Roll back on network error
         await load(true);
       } finally {
         if (mountedRef.current) {
@@ -219,131 +167,98 @@ export function useNotifications() {
         }
       }
     },
-    [
-      load,
-      notifications,
-    ],
+    [load, notifications],
   );
 
   /**
-   * Marks all unread notifications as read.
+   * Optimistically marks all unread notifications as read.
    */
-  const markAllRead =
-    useCallback(async (): Promise<void> => {
-      if (unreadCount === 0) {
-        return;
-      }
+  const markAllRead = useCallback(async (): Promise<void> => {
+    if (unreadCount === 0) {
+      return;
+    }
 
-      const previousNotifications =
-        notifications;
+    const previousNotifications = notifications;
+    const previousUnreadCount = unreadCount;
 
-      const previousUnreadCount =
-        unreadCount;
+    setActionLoadingId('all');
+    setError(null);
 
-      setActionLoadingId('all');
-      setError(null);
+    // Optimistic update
+    setNotifications((currentNotifications) =>
+      currentNotifications.map((item) => ({
+        ...item,
+        is_read: true,
+      })),
+    );
 
-      // Optimistic update.
-      setNotifications(
-        (currentNotifications) =>
-          currentNotifications.map(
-            (item) => ({
-              ...item,
-              is_read: true,
-            }),
-          ),
+    setUnreadCount(0);
+
+    try {
+      await markAllNotificationsAsRead();
+    } catch (caughtError: unknown) {
+      setError(
+        getErrorMessage(
+          caughtError,
+          'Could not mark all notifications as read.',
+        ),
       );
-
-      setUnreadCount(0);
-
-      try {
-        await markAllNotificationsAsRead();
-      } catch (caughtError: unknown) {
-        setError(
-          getErrorMessage(
-            caughtError,
-            'Could not mark all notifications as read.',
-          ),
-        );
-
-        // Rollback.
-        setNotifications(
-          previousNotifications,
-        );
-
-        setUnreadCount(
-          previousUnreadCount,
-        );
-
-        await load(true);
-      } finally {
-        if (mountedRef.current) {
-          setActionLoadingId(null);
-        }
+      // Roll back
+      setNotifications(previousNotifications);
+      setUnreadCount(previousUnreadCount);
+      await load(true);
+    } finally {
+      if (mountedRef.current) {
+        setActionLoadingId(null);
       }
-    }, [
-      load,
-      notifications,
-      unreadCount,
-    ]);
+    }
+  }, [load, notifications, unreadCount]);
 
   /**
-   * Creates development test notification.
+   * Generates a sample test notification in development environments.
    */
-  const triggerDemoAlert =
-    useCallback(async (): Promise<void> => {
-      setActionLoadingId('demo');
-      setError(null);
+  const triggerDemoAlert = useCallback(async (): Promise<void> => {
+    setActionLoadingId('demo');
+    setError(null);
 
-      try {
-        const createdNotification =
-          await sendTestNotification(
-            'Your AI performance report is ready!',
-            'report_ready',
-          );
+    try {
+      const createdNotification = await sendTestNotification(
+        'Your AI performance report is ready!',
+        'report_ready',
+      );
 
-        setNotifications(
-          (currentNotifications) => [
-            createdNotification,
-            ...currentNotifications.filter(
-              (item) =>
-                item.id !==
-                createdNotification.id,
-            ),
-          ],
-        );
+      setNotifications((currentNotifications) => [
+        createdNotification,
+        ...currentNotifications.filter(
+          (item) => item.id !== createdNotification.id,
+        ),
+      ]);
 
-        if (!createdNotification.is_read) {
-          setUnreadCount(
-            (currentCount) =>
-              currentCount + 1,
-          );
-        }
-      } catch (caughtError: unknown) {
-        setError(
-          getErrorMessage(
-            caughtError,
-            'Could not create test notification.',
-          ),
-        );
-
-        throw caughtError;
-      } finally {
-        if (mountedRef.current) {
-          setActionLoadingId(null);
-        }
+      if (!createdNotification.is_read) {
+        setUnreadCount((currentCount) => currentCount + 1);
       }
-    }, []);
+    } catch (caughtError: unknown) {
+      setError(
+        getErrorMessage(
+          caughtError,
+          'Could not create test notification.',
+        ),
+      );
+      throw caughtError;
+    } finally {
+      if (mountedRef.current) {
+        setActionLoadingId(null);
+      }
+    }
+  }, []);
 
   return {
     notifications,
     unreadCount,
-
     isLoading,
     isRefreshing,
     actionLoadingId,
     error,
-
     refreshNotifications,
     markRead,
     markAllRead,

@@ -1,35 +1,38 @@
 """
-ATHLETIX — Pydantic Schemas: Users & Auth
-models/user.py
+ATHLETIX — Data Models: User & Authentication Schemas
+backend/app/models/user.py
 
-All request/response shapes for auth and user endpoints.
-These define the API contract — frontend is built against these shapes.
-Changing a field name requires coordinated front+back update (Rules.md §6).
+Defines Pydantic request and response schemas for user registration, authentication,
+profile management, and athletic data validation.
+
+Core Models:
+- SignupRequest / LoginRequest: Input validation for credentials and role assignment.
+- AuthResponse / AuthTokenData: JWT authentication payload returned upon login or registration.
+- AthleteProfileUpdate: Physical and sports metrics validation for athlete profiles (height, weight, age).
 """
 
 from pydantic import BaseModel, EmailStr, field_validator
 from typing import Literal
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared / Enums
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Roles & Enums ────────────────────────────────────────────────────────────
 UserRole = Literal["athlete", "official", "admin"]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth — Request Schemas
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Auth: Request Schemas ────────────────────────────────────────────────────
 class SignupRequest(BaseModel):
-    name:     str
-    email:    EmailStr
+    """
+    Validation schema for creating a new user account.
+    """
+    name: str
+    email: EmailStr
     password: str
-    role:     UserRole
+    role: UserRole
 
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
         if len(v) < 8:
-            raise ValueError("Password must be at least 8 characters.")
+            raise ValueError("Password must be at least 8 characters long.")
         return v
 
     @field_validator("name")
@@ -41,15 +44,24 @@ class SignupRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    email:    EmailStr
+    """
+    Validation schema for user authentication.
+    """
+    email: EmailStr
     password: str
 
 
 class ForgotPasswordRequest(BaseModel):
+    """
+    Request schema to trigger a password reset email.
+    """
     email: EmailStr
 
 
 class ResetPasswordRequest(BaseModel):
+    """
+    Request schema to update account password via a reset token.
+    """
     access_token: str
     new_password: str
 
@@ -57,39 +69,47 @@ class ResetPasswordRequest(BaseModel):
     @classmethod
     def password_strength(cls, v: str) -> str:
         if len(v) < 8:
-            raise ValueError("New password must be at least 8 characters.")
+            raise ValueError("New password must be at least 8 characters long.")
         return v
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Auth — Response Schemas
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── Auth: Response Schemas ───────────────────────────────────────────────────
 class AuthTokenData(BaseModel):
-    access_token:  str
-    token_type:    str = "bearer"
-    role:          UserRole
-    user_id:       str
-    name:          str
-    email:         str
+    """
+    Authentication session token and user profile metadata.
+    """
+    access_token: str
+    token_type: str = "bearer"
+    role: UserRole
+    user_id: str
+    name: str
+    email: str
 
 
 class AuthResponse(BaseModel):
+    """
+    Standard API response envelope for authentication endpoints.
+    """
     success: bool = True
-    data:    AuthTokenData
+    data: AuthTokenData
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# User Profile — Request / Response Schemas
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── User Profile Schemas ────────────────────────────────────────────────────
 class UserProfileResponse(BaseModel):
-    id:         str
-    name:       str
-    email:      str
-    role:       UserRole
+    """
+    Public profile representation for a user.
+    """
+    id: str
+    name: str
+    email: str
+    role: UserRole
     created_at: str
 
 
 class UpdateProfileRequest(BaseModel):
+    """
+    Payload for updating general user account settings.
+    """
     name: str | None = None
 
     @field_validator("name")
@@ -101,13 +121,16 @@ class UpdateProfileRequest(BaseModel):
 
 
 class AthleteProfileUpdate(BaseModel):
-    age:              int   | None = None
-    gender:           str   | None = None
-    location:         str   | None = None
-    bio:              str   | None = None
-    primary_sport:    Literal["powerlifting", "calisthenics"] | None = None
-    height_cm:        float | None = None
-    weight_kg:        float | None = None
+    """
+    Detailed athletic attributes and biometric measurements for athlete profiles.
+    """
+    age: int | None = None
+    gender: str | None = None
+    location: str | None = None
+    bio: str | None = None
+    primary_sport: Literal["powerlifting", "calisthenics"] | None = None
+    height_cm: float | None = None
+    weight_kg: float | None = None
     experience_level: Literal["beginner", "intermediate", "advanced", "elite"] | None = None
 
     @field_validator("age")

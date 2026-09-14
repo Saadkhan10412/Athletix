@@ -1,3 +1,6 @@
+# ─── Render Blueprint Deployment Configuration ──────────────────────────────
+# Defines the web service deployment specifications for Render Cloud platform.
+
 services:
   - type: web
     name: athletix-backend
@@ -22,4 +25,4 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: FRONTEND_URL
-        value: https://mobile-app-theta-gules.vercel.app
+        sync: false

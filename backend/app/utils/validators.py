@@ -1,29 +1,25 @@
 """
-ATHLETIX — Video Upload Pre-validation
-utils/validators.py
+ATHLETIX — Video Upload Validation
+backend/app/utils/validators.py
 
-Validates uploaded video files BEFORE triggering the AI pipeline.
-Rejecting early saves compute and returns a clear error to the athlete.
+Validates uploaded video files before submitting them to cloud storage and triggering the AI pipeline.
 
-Rules (Rules.md §9):
-  - Validate uploads before running AI — file type, duration, size cap
-  - Return human-readable messages; never raw Python errors
+Working & Security:
+- Pre-checks file format (MP4/MPEG), extension, and maximum payload size cap (150MB).
+- Rejects corrupt or invalid file formats immediately with user-friendly errors,
+  conserving server compute and bandwidth.
 """
 
 import logging
 import os
-import subprocess
-import tempfile
-from typing import BinaryIO
-
 from fastapi import HTTPException, status
 
 logger = logging.getLogger("athletix.validators")
 
 ALLOWED_CONTENT_TYPES = {"video/mp4", "video/mpeg"}
-MAX_FILE_SIZE_MB = 150           # generous cap for 1-2 min HD video
-MIN_DURATION_SECONDS = 30        # 30 s minimum (allows shorter valid clips)
-MAX_DURATION_SECONDS = 180       # 3 min hard cap (PRD: 1-2 min, small buffer)
+MAX_FILE_SIZE_MB = 150           # Max file size limit (150MB)
+MIN_DURATION_SECONDS = 30        # Recommended minimum video duration
+MAX_DURATION_SECONDS = 180       # Maximum 3-minute video duration
 
 
 def validate_video_file(
@@ -32,8 +28,10 @@ def validate_video_file(
     file_size_bytes: int,
 ) -> None:
     """
-    Validates filename extension and content type.
-    Raises HTTPException(400) on failure with a structured error body.
+    Validates video filename extension, MIME type, and byte size.
+
+    Raises:
+        HTTPException(400): If the file is not an MP4 or exceeds the maximum allowed size limit.
     """
     ext = os.path.splitext(filename)[-1].lower()
     if ext not in (".mp4",) or content_type not in ALLOWED_CONTENT_TYPES:

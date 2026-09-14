@@ -1,6 +1,13 @@
 /**
- * ATHLETIX — Auth Zustand Store
- * stores/useAuthStore.ts
+ * ATHLETIX — Global Authentication Zustand Store
+ * mobile-app/stores/useAuthStore.ts
+ *
+ * Centralized state container managing user authentication and active session lifecycle.
+ *
+ * Core Responsibilities:
+ * - Session Restoration: Rehydrates user profile and JWT token from persistent storage upon app startup.
+ * - Reactive Auth State: Provides components with reactive access to `user`, `isLoading`, and `isInitialized`.
+ * - State Cleardown: Coordinates with the auth service to safely purge session credentials on logout.
  */
 
 import { create } from 'zustand';
@@ -29,6 +36,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
     set({ user });
   },
 
+  /**
+   * Initializes auth state by loading persisted credentials on app launch.
+   */
   initialize: async () => {
     if (get().isInitialized) {
       return;
@@ -42,6 +52,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
     }
   },
 
+  /**
+   * Clears active user session locally and invalidates backend tokens.
+   */
   logout: async () => {
     try {
       set({ isLoading: true });
@@ -51,6 +64,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => ({
     }
   },
 
+  /**
+   * Refreshes active user state from storage or remote session.
+   */
   refresh: async () => {
     try {
       set({ isLoading: true });
