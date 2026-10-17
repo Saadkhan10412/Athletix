@@ -13,11 +13,10 @@ from pathlib import Path
 # Path to the ai-gym-coach Main App directory
 # exercises/__init__.py = backend/app/services/ai/exercises/__init__.py
 # parents[5] = project root (AI in Sports-Full Stack)
-_GYM_COACH_APP_DIR = (
-    Path(__file__).resolve().parents[5]
-    / "ai-gym-coach-main - Copy"
-    / "Main App"
-)
+_PROJECT_ROOT = Path(__file__).resolve().parents[5]
+_GYM_COACH_APP_DIR = _PROJECT_ROOT / "ai-gym-coach-main" / "Main App"
+if not _GYM_COACH_APP_DIR.is_dir():
+    _GYM_COACH_APP_DIR = _PROJECT_ROOT / "ai-gym-coach-main - Copy" / "Main App"
 
 _path_injected = False
 

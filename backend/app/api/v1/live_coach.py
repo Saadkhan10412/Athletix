@@ -2,7 +2,7 @@
 ATHLETIX — Live AI Posture Coach Router
 api/v1/live_coach.py
 
-Integrates the real-time AI Gym Coach feature from `ai-gym-coach-main - Copy`:
+Integrates the real-time AI Gym Coach feature from `ai-gym-coach-main`:
   - Auto-authenticates athlete via launch URL
   - Persists completed real-time workout metrics
 """
@@ -31,7 +31,7 @@ class LiveSessionPayload(BaseModel):
 @router.get("/launch-url")
 async def get_live_launch_url(athlete: AuthenticatedUser = Depends(require_athlete)):
     """
-    Returns the launch URL for the `ai-gym-coach-main - Copy` live posture tracker
+    Returns the launch URL for the `ai-gym-coach-main` live posture tracker
     pre-configured with the athlete's authenticated username for single-sign-on (SSO).
     """
     username = athlete.email.split("@")[0] if athlete.email else f"athlete_{athlete.id[:6]}"

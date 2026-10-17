@@ -65,7 +65,13 @@ def start_streamlit_coach_background():
         # Discover workspace root directory containing the Streamlit app
         backend_dir = Path(__file__).resolve().parent.parent
         workspace_dir = backend_dir.parent
-        coach_script = workspace_dir / "ai-gym-coach-main - Copy" / "Main App" / "main.py"
+        coach_script = workspace_dir / "ai-gym-coach-main" / "Main App" / "main.py"
+
+        if not coach_script.exists():
+            coach_script = workspace_dir / "ai-gym-coach-main - Copy" / "Main App" / "main.py"
+
+        if not coach_script.exists():
+            coach_script = backend_dir / "ai-gym-coach-main" / "Main App" / "main.py"
 
         if not coach_script.exists():
             coach_script = backend_dir / "ai-gym-coach-main - Copy" / "Main App" / "main.py"

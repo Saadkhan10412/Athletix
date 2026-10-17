@@ -20,6 +20,10 @@ build/
 .eggs/
 pip-wheel-metadata/
 *.log
+*.db
+*.sqlite3
+.dist/
+.streamlit/secrets.toml
 
 # ─── Node / Frontend ──────────────────────────────────────────────────────────
 node_modules/

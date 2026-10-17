@@ -13,7 +13,7 @@ export interface LiveLaunchData {
   service_status: string;
 }
 
-/** Fetches single-sign-on launch URL for ai-gym-coach-main - Copy */
+/** Fetches single-sign-on launch URL for ai-gym-coach-main */
 export async function getLiveLaunchUrl(): Promise<LiveLaunchData> {
   const response = await api.get('/live/launch-url');
   return response.data.data;
